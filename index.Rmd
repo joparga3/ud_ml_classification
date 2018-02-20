@@ -1,0 +1,279 @@
+---
+title: "Classification"
+author: "Jose Parreno Garcia"
+date: "February 2018"
+output: 
+  html_document:
+    toc: true # table of content true
+    depth: 6  # upto three depths of headings (specified by #, ##, ###, ####)
+    number_sections: true  ## if you want number sections at each table header
+    #theme: spacelab  # many options for theme, this one is my favorite.
+    #highlight: tango  # specifies the syntax highlighting style
+    keep_md: true
+---
+<style>
+body {
+text-align: justify}
+
+</style>
+
+<br>
+
+```{r set-options, echo=FALSE, cache=FALSE}
+options(width = 250)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source_path = getwd()
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+library(knitr)
+```
+
+<br>
+
+We will look at:
+
+* Recursive partitioning trees
+* Conditional inference tree
+* K-nearest neighbor
+* Logistic regression
+* Naive Bayes
+
+<br>
+
+# Preparing the data
+
+```{r fig.width=12, fig.height=7}
+library(C50)
+
+data(churn)
+
+str(churnTrain)
+
+# Remove certain variables that we are not going to use
+churnTrain = churnTrain[,! names(churnTrain) %in% c("state"
+                                                    , "area_code"
+                                                    , "account_length") ]
+
+set.seed(2)
+ind = sample(2, nrow(churnTrain), replace = TRUE, prob=c(0.7,0.3))
+trainset = churnTrain[ind == 1,]
+testset = churnTrain[ind == 2,]
+
+dim(trainset)
+dim(testset)
+
+split.data = function(data, p = 0.7, s = 666){
+   set.seed(s)
+   index = sample(1:dim(data)[1])
+   train = data[index[1:floor(dim(data)[1] * p)], ]
+   test = data[index[((ceiling(dim(data)[1] * p)) + 1):dim(data)[1]], ]
+   return(list(train = train, test = test))
+   }
+
+```
+
+<br>
+
+# Recursive partitioning trees
+
+
+```{r echo=FALSE, fig.width=5, fig.height=3}
+include_graphics(paste0(source_path,"/images/1.PNG"))
+include_graphics(paste0(source_path,"/images/2.PNG"))
+```
+
+## Building classification model with recursive partitioning trees
+
+```{r fig.width=12, fig.height=7}
+library(rpart)
+
+churn.rp = rpart(churn ~ ., data=trainset)
+
+churn.rp
+
+#printcp(churn.rp)
+
+plotcp(churn.rp)
+summary(churn.rp)
+```
+
+## Vsualizing a recursive partitioning tree
+
+```{r fig.width=12, fig.height=7}
+plot(churn.rp, margin= 0.1)
+text(churn.rp, all=TRUE, use.n = TRUE)
+
+plot(churn.rp, uniform=TRUE, branch=0.6, margin=0.1)
+text(churn.rp, all=TRUE, use.n = TRUE)
+
+```
+
+## Measuring prediction performance 
+
+```{r fig.width=12, fig.height=7}
+predictions = predict(churn.rp, testset, type="class")
+table(testset$churn, predictions)
+
+library(caret)
+confusionMatrix(table(predictions, testset$churn))
+
+```
+
+## Pruning a recursive partitioning tree
+
+```{r fig.width=12, fig.height=7}
+min(churn.rp$cptable[,"xerror"])
+
+which.min(churn.rp$cptable[,"xerror"])
+
+churn.cp = churn.rp$cptable[7,"CP"]
+churn.cp
+
+prune.tree = prune(churn.rp, cp= churn.cp)
+
+plot(prune.tree, margin= 0.1)
+text(prune.tree, all=TRUE , use.n=TRUE)
+
+predictions = predict(prune.tree, testset, type="class")
+table(testset$churn, predictions)
+
+confusionMatrix(table(predictions, testset$churn))
+```
+
+<br>
+
+# Conditional inference tree
+
+```{r echo=FALSE, fig.width=5, fig.height=3}
+include_graphics(paste0(source_path,"/images/3.PNG"))
+```
+
+## Building classification model with conditional inference tree
+
+```{r fig.width=12, fig.height=7}
+library(party)
+ctree.model = ctree(churn ~ . , data = trainset)
+
+ctree.model
+```
+
+## Plotting the tree
+
+```{r fig.width=12, fig.height=7}
+plot(ctree.model)
+
+daycharge.model = ctree(churn ~ total_day_charge, data = trainset)
+plot(daycharge.model)
+```
+
+## Measuring the performance
+
+```{r fig.width=12, fig.height=7}
+ctree.predict = predict(ctree.model ,testset)
+
+table(ctree.predict, testset$churn)
+
+confusionMatrix(table(ctree.predict, testset$churn))
+
+tr = treeresponse(ctree.model, newdata = testset[1:5,])
+tr
+```
+
+<br>
+
+# K-nearest neighbor
+
+```{r echo=FALSE, fig.width=5, fig.height=3}
+include_graphics(paste0(source_path,"/images/4.PNG"))
+include_graphics(paste0(source_path,"/images/5.PNG"))
+include_graphics(paste0(source_path,"/images/6.PNG"))
+include_graphics(paste0(source_path,"/images/7.PNG"))
+include_graphics(paste0(source_path,"/images/8.PNG"))
+```
+
+## Building classification model with knn
+
+```{r fig.width=12, fig.height=7}
+library(class)
+
+levels(trainset$international_plan) = list("0"="no", "1"="yes")
+levels(trainset$voice_mail_plan) = list("0"="no", "1"="yes")
+levels(testset$international_plan) = list("0"="no", "1"="yes")
+levels(testset$voice_mail_plan) = list("0"="no", "1"="yes")
+
+churn.knn = knn(trainset[,! names(trainset) %in% c("churn")],
+                testset[,! names(testset) %in% c("churn")], trainset$churn, k=3)
+
+summary(churn.knn)
+
+table(testset$churn, churn.knn)
+
+confusionMatrix(table(testset$churn, churn.knn))
+
+```
+
+<br>
+
+# Logistic regression
+
+```{r echo=FALSE, fig.width=5, fig.height=3}
+include_graphics(paste0(source_path,"/images/9.PNG"))
+include_graphics(paste0(source_path,"/images/10.PNG"))
+include_graphics(paste0(source_path,"/images/11.PNG"))
+```
+
+```{r fig.width=12, fig.height=7}
+fit = glm(churn ~ ., data = trainset, family=binomial)
+
+summary(fit)
+
+fit = glm(churn ~ international_plan + voice_mail_plan+total_intl_calls+
+            number_customer_service_calls,data = trainset, family=binomial)
+summary(fit)
+
+pred = predict(fit,testset, type="response")
+Class = pred >.5
+
+summary(Class)
+
+tb = table(testset$churn,Class)
+tb
+
+churn.mod = ifelse(testset$churn == "yes", 1, 0)
+pred_class = churn.mod
+pred_class[pred<=.5] = 1- pred_class[pred<=.5]
+ctb = table(churn.mod, pred_class)
+ctb
+
+confusionMatrix(ctb)
+
+```
+
+<br>
+
+# Naive Bayes
+
+```{r echo=FALSE, fig.width=5, fig.height=3}
+include_graphics(paste0(source_path,"/images/12.PNG"))
+include_graphics(paste0(source_path,"/images/13.PNG"))
+```
+
+```{r fig.width=12, fig.height=7}
+library(e1071)
+classifier=naiveBayes(trainset[, !names(trainset) %in%
+                                   c("churn")], trainset$churn)
+
+classifier
+
+bayes.table = table(predict(classifier, testset[,!names(testset) %in%
+                                    c("churn")]), testset$churn)
+bayes.table
+
+confusionMatrix(bayes.table)
+```
+
+

@@ -1,0 +1,7 @@
+name: "Classification models"
+navbar:
+  title: "Classification models"
+  left:
+    - text: "Classification models"
+      href: index.html
+
